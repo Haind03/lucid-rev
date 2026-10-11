@@ -56,6 +56,7 @@ class Binary:
     arch: str
     entrypoint: int
     sections: list[Section]
+    segments: list[Section]
     imports: list[str]
     raw: bytes
 
@@ -85,6 +86,7 @@ class Binary:
         self.arch = self._detect_arch(parsed)
         self.entrypoint = int(parsed.entrypoint)
         self.sections = [self._make_section(s) for s in parsed.sections]
+        self.segments = self._collect_segments(parsed)
         self.imports = self._collect_imports(parsed)
 
     # ------------------------------------------------------------------ helpers
@@ -120,6 +122,29 @@ class Binary:
             writable=writable,
         )
 
+    def _collect_segments(self, parsed: lief.Binary) -> list[Section]:
+        """ELF PT_LOAD segments as pseudo-sections (useful when section headers are stripped)."""
+        if not isinstance(parsed, lief.ELF.Binary):
+            return []
+        segments: list[Section] = []
+        for i, seg in enumerate(parsed.segments):
+            if seg.type != lief.ELF.Segment.TYPE.LOAD:
+                continue
+            data = bytes(seg.content)
+            segments.append(
+                Section(
+                    name=f"LOAD[{i}]",
+                    va=int(seg.virtual_address),
+                    size=int(seg.physical_size),
+                    offset=int(seg.file_offset),
+                    entropy=self.section_entropy(data),
+                    data=data,
+                    executable=seg.has(lief.ELF.Segment.FLAGS.X),
+                    writable=seg.has(lief.ELF.Segment.FLAGS.W),
+                )
+            )
+        return segments
+
     @staticmethod
     def _collect_imports(parsed: lief.Binary) -> list[str]:
         if isinstance(parsed, lief.ELF.Binary):
@@ -136,6 +161,18 @@ class Binary:
     def offset_to_va(self, section: Section, offset: int) -> int:
         """Translate an offset inside ``section.data`` to a virtual address."""
         return section.va + offset
+
+    def file_offset_to_va(self, offset: int) -> int | None:
+        """Map a raw file offset to a virtual address, or None if it is not mapped."""
+        for region in (*self.sections, *self.segments):
+            if region.va and region.offset <= offset < region.offset + len(region.data):
+                return region.va + (offset - region.offset)
+        return None
+
+    @property
+    def has_section_headers(self) -> bool:
+        """False when the section header table is missing or empty (common after packing)."""
+        return any(s.name for s in self.sections)
 
     @property
     def is_64(self) -> bool:
