@@ -6,7 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] - Milestone 1
+## [0.1.0] - 2026-10-11
+
+Milestone 1.
 
 ### Added
 - `lucid analyze <file>` CLI with a Markdown report (`<file>.lucid.md`, or `-o`)
@@ -22,3 +24,8 @@ All notable changes to this project are documented here. The format follows
   entropy-window context and Capstone listings as evidence.
 - Test suite compiling ELF fixtures with `cc`; GitHub Actions CI on
   Python 3.11–3.13.
+- Release workflow: wheel/sdist attached to the GitHub Release and a container
+  image published to `ghcr.io/haind03/lucid-rev`.
+
+[Unreleased]: https://github.com/Haind03/lucid-rev/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Haind03/lucid-rev/releases/tag/v0.1.0
