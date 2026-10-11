@@ -50,6 +50,22 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'          # or: pip install -r requirements.txt
 ```
 
+### From a release
+
+```bash
+pip install https://github.com/Haind03/lucid-rev/releases/download/v0.1.0/lucid_rev-0.1.0-py3-none-any.whl
+```
+
+### Docker
+
+```bash
+docker pull ghcr.io/haind03/lucid-rev:0.1.0
+docker run --rm -v "$PWD:/work" ghcr.io/haind03/lucid-rev:0.1.0 analyze /work/sample.elf
+```
+
+The container runs as an unprivileged user; the report is written next to the
+input inside the mounted directory.
+
 ## Usage
 
 ```bash
