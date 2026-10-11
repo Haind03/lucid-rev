@@ -24,12 +24,24 @@ _MAX_XOR_FINDINGS = 64
 NOISY_HITS = 16
 NOISY_KEYS = 8
 _MAX_STACK_FINDINGS = 64
-_TEXT_RE = re.compile(rb"[\x20-\x7e]{%d,}\x00" % MIN_LEN)
 #: Key 0x20 only flips the case of letters: indistinguishable from plain strings.
 _XOR_KEYS = [k for k in range(1, 256) if k != 0x20]
 #: Raw 0x00 maps to 0x01 (neither printable nor NUL) so zero padding and NULs never
 #: join a candidate run: plain strings never contain the key byte's ciphertext 0.
 _XOR_TABLES = {k: bytes([0x01]) + bytes(b ^ k for b in range(1, 256)) for k in _XOR_KEYS}
+#: Per-key classification of raw bytes: P = decodes to printable ASCII, NUL = the key
+#: itself (decodes to the terminator), "." = anything else (raw 0x00 included). A
+#: candidate is MIN_LEN+ P's followed by NUL; bytes.find() locates those in C, so
+#: Python only touches terminated runs.
+_P, _TERM, _OTHER = 0x50, 0x00, 0x2E
+_MASK_TABLES = {
+    k: bytes(
+        _TERM if b == k else _P if b != 0 and 0x20 <= (b ^ k) < 0x7F else _OTHER
+        for b in range(256)
+    )
+    for k in _XOR_KEYS
+}
+_NEEDLE = bytes([_P]) * MIN_LEN + bytes([_TERM])
 _TEXT_PUNCT = frozenset(b" 0123456789./:-_,!?'@=%")
 _IDENT_RE = re.compile(rb"[A-Za-z0-9_]+")
 #: CTF-style flag: PREFIX{body}; body needs a separator or digit (leetspeak).
@@ -168,11 +180,16 @@ def find_xor_strings(data: bytes) -> list[_XorHit]:
     """
     best: dict[int, _XorHit] = {}
     for key, table in _XOR_TABLES.items():
-        decoded_all = data.translate(table)
-        for m in _TEXT_RE.finditer(decoded_all):
-            start, end = m.start(), m.end() - 1  # end excludes the terminator
-            decoded = decoded_all[start:end]
+        mask = data.translate(_MASK_TABLES[key])
+        pos = mask.find(_NEEDLE)
+        while pos != -1:
+            end = pos + MIN_LEN  # index of the terminator
+            start = pos
+            while start > 0 and mask[start - 1] == _P:
+                start -= 1  # extend back to the start of the printable run
+            pos = mask.find(_NEEDLE, end + 1)
             encoded = data[start:end]
+            decoded = encoded.translate(table)
             if _periodic(encoded) or not looks_like_text(decoded):
                 continue
             controls = sum(1 for b in encoded if b < 0x20)
