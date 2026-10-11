@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 HaiND, Posts and Telecommunications Institute of Technology (PTIT)
-"""Report rendering: Markdown file output and coloured terminal output."""
+"""Report rendering: Markdown, JSON and SARIF files plus coloured terminal output."""
 
 from __future__ import annotations
 
@@ -116,3 +116,120 @@ def render_terminal(
                 con.print(f"    {escape(f.detail)}")
             if f.evidence:
                 con.print(Panel(escape(f.evidence.rstrip()), border_style="dim", expand=False))
+
+
+# --------------------------------------------------------------------------- JSON
+JSON_SCHEMA = "lucid-report/1"
+
+
+def render_json(
+    findings: list[Finding],
+    target: str = "",
+    modules: Iterable[str] = MODULE_ORDER,
+    status: dict[str, str] | None = None,
+    info: dict | None = None,
+) -> str:
+    """Render findings as a JSON document (schema ``lucid-report/1``)."""
+    import json
+
+    status = status or {}
+    groups = _group(findings, modules)
+    counts = Counter(f.severity for f in findings)
+    doc = {
+        "schema": JSON_SCHEMA,
+        "tool": {"name": "lucid", "version": __version__},
+        "target": {"name": target, **(info or {})},
+        "summary": {sev.name: counts.get(sev, 0) for sev in sorted(Severity, reverse=True)}
+        | {"total": len(findings)},
+        "modules": {m: status.get(m, "ok") for m in groups},
+        "findings": [f.to_dict() for items in groups.values() for f in items],
+    }
+    return json.dumps(doc, indent=2, default=str) + "\n"
+
+
+# -------------------------------------------------------------------------- SARIF
+SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
+_SARIF_LEVEL = {
+    Severity.HIGH: "error",
+    Severity.MEDIUM: "warning",
+    Severity.LOW: "note",
+    Severity.INFO: "note",
+}
+
+
+def render_sarif(
+    findings: list[Finding],
+    target: str = "",
+    modules: Iterable[str] = MODULE_ORDER,
+    status: dict[str, str] | None = None,
+    info: dict | None = None,
+) -> str:
+    """Render findings as a SARIF 2.1.0 log (one run, binary locations by address)."""
+    import json
+
+    from lucid.rules import RULES
+
+    status = status or {}
+    groups = _group(findings, modules)
+    ordered = [f for items in groups.values() for f in items]
+    used = sorted({f.rule_id for f in ordered} | {r for r in RULES})
+    rule_index = {rid: i for i, rid in enumerate(used)}
+    rules = []
+    for rid in used:
+        rule = RULES.get(rid)
+        rules.append({
+            "id": rid,
+            "name": rule.name if rule else rid.rsplit("/", 1)[-1],
+            "shortDescription": {"text": rule.description if rule else rid},
+            "defaultConfiguration": {
+                "level": _SARIF_LEVEL[rule.severity] if rule else "note"
+            },
+        })
+
+    artifact_uri = (info or {}).get("path") or target
+    results = []
+    for f in ordered:
+        location: dict = {"physicalLocation": {"artifactLocation": {"uri": artifact_uri}}}
+        if f.address is not None:
+            location["physicalLocation"]["address"] = {"absoluteAddress": f.address}
+        results.append({
+            "ruleId": f.rule_id,
+            "ruleIndex": rule_index[f.rule_id],
+            "level": _SARIF_LEVEL[f.severity],
+            "message": {"text": f"{f.title}. {f.detail}".strip()},
+            "locations": [location],
+            "properties": {
+                "severity": f.severity.name,
+                "module": f.module,
+                "evidence": f.evidence,
+                **({"addressHex": f.address_str} if f.address is not None else {}),
+                **{f"meta.{k}": v for k, v in f.meta.items()},
+            },
+        })
+
+    notifications = [
+        {"level": "error", "message": {"text": f"module {m}: {msg}"}}
+        for m, msg in status.items()
+    ]
+    log = {
+        "$schema": SARIF_SCHEMA,
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {"driver": {
+                "name": "lucid",
+                "version": __version__,
+                "informationUri": "https://github.com/Haind03/lucid-rev",
+                "rules": rules,
+            }},
+            "artifacts": [{
+                "location": {"uri": artifact_uri},
+                **({"hashes": {"sha-256": info["sha256"]}} if info and "sha256" in info else {}),
+            }],
+            "invocations": [{
+                "executionSuccessful": not status,
+                "toolExecutionNotifications": notifications,
+            }],
+            "results": results,
+        }],
+    }
+    return json.dumps(log, indent=2, default=str) + "\n"

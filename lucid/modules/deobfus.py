@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from lucid.core import disasm
@@ -24,12 +25,24 @@ _MAX_XOR_FINDINGS = 64
 NOISY_HITS = 16
 NOISY_KEYS = 8
 _MAX_STACK_FINDINGS = 64
-_TEXT_RE = re.compile(rb"[\x20-\x7e]{%d,}\x00" % MIN_LEN)
 #: Key 0x20 only flips the case of letters: indistinguishable from plain strings.
 _XOR_KEYS = [k for k in range(1, 256) if k != 0x20]
 #: Raw 0x00 maps to 0x01 (neither printable nor NUL) so zero padding and NULs never
 #: join a candidate run: plain strings never contain the key byte's ciphertext 0.
 _XOR_TABLES = {k: bytes([0x01]) + bytes(b ^ k for b in range(1, 256)) for k in _XOR_KEYS}
+#: Per-key classification of raw bytes: P = decodes to printable ASCII, NUL = the key
+#: itself (decodes to the terminator), "." = anything else (raw 0x00 included). A
+#: candidate is MIN_LEN+ P's followed by NUL; bytes.find() locates those in C, so
+#: Python only touches terminated runs.
+_P, _TERM, _OTHER = 0x50, 0x00, 0x2E
+_MASK_TABLES = {
+    k: bytes(
+        _TERM if b == k else _P if b != 0 and 0x20 <= (b ^ k) < 0x7F else _OTHER
+        for b in range(256)
+    )
+    for k in _XOR_KEYS
+}
+_NEEDLE = bytes([_P]) * MIN_LEN + bytes([_TERM])
 _TEXT_PUNCT = frozenset(b" 0123456789./:-_,!?'@=%")
 _IDENT_RE = re.compile(rb"[A-Za-z0-9_]+")
 #: CTF-style flag: PREFIX{body}; body needs a separator or digit (leetspeak).
@@ -155,6 +168,23 @@ class _XorHit:
     score: float
 
 
+def xor_candidates(data: bytes) -> Iterator[tuple[int, int, int]]:
+    """Yield (key, start, end) for every maximal run of >= MIN_LEN bytes that decode
+    to printable ASCII under ``key`` and are followed by the key byte (NUL once
+    decoded). Raw 0x00 never belongs to a run. ``end`` excludes the terminator.
+    """
+    for key in _XOR_KEYS:
+        mask = data.translate(_MASK_TABLES[key])
+        pos = mask.find(_NEEDLE)
+        while pos != -1:
+            end = pos + MIN_LEN  # index of the terminator
+            start = pos
+            while start > 0 and mask[start - 1] == _P:
+                start -= 1  # extend back to the start of the printable run
+            yield key, start, end
+            pos = mask.find(_NEEDLE, end + 1)
+
+
 def find_xor_strings(data: bytes) -> list[_XorHit]:
     """Find NUL-terminated printable strings hidden under a single-byte XOR key.
 
@@ -167,35 +197,32 @@ def find_xor_strings(data: bytes) -> list[_XorHit]:
     only flips letter case (plain strings would all match).
     """
     best: dict[int, _XorHit] = {}
-    for key, table in _XOR_TABLES.items():
-        decoded_all = data.translate(table)
-        for m in _TEXT_RE.finditer(decoded_all):
-            start, end = m.start(), m.end() - 1  # end excludes the terminator
-            decoded = decoded_all[start:end]
-            encoded = data[start:end]
-            if _periodic(encoded) or not looks_like_text(decoded):
+    for key, start, end in xor_candidates(data):
+        encoded = data[start:end]
+        decoded = encoded.translate(_XOR_TABLES[key])
+        if _periodic(encoded) or not looks_like_text(decoded):
+            continue
+        controls = sum(1 for b in encoded if b < 0x20)
+        if (controls >= 0.7 * len(encoded) and len(decoded) < 10
+                and not _FLAG_RE.fullmatch(decoded) and _bigram_ratio(decoded) < 0.4):
+            continue  # small-integer tables (varints, offsets) XOR 0x40..0x7f
+        if not _FLAG_RE.fullmatch(decoded) and (
+            language_score(decoded) < language_score(encoded) + 0.3
+        ):
+            continue  # raw bytes read about as well as the "decoded" ones
+        if all(_printable(b) for b in encoded):
+            # ciphertext that is itself printable is ambiguous with plain strings:
+            # demand mostly-lowercase output and no enclosing plaintext C-string
+            letters = [b for b in decoded if _is_alpha(b)]
+            lower = sum(1 for b in letters if b >= 0x61)
+            upper = len(letters) - lower
+            cased = lower >= 0.6 * len(letters) or upper >= 0.9 * len(letters)
+            if not cased or _IDENT_RE.fullmatch(encoded) or _inside_plain_string(data, start, end):
                 continue
-            controls = sum(1 for b in encoded if b < 0x20)
-            if (controls >= 0.7 * len(encoded) and len(decoded) < 10
-                    and not _FLAG_RE.fullmatch(decoded) and _bigram_ratio(decoded) < 0.4):
-                continue  # small-integer tables (varints, offsets) XOR 0x40..0x7f
-            if not _FLAG_RE.fullmatch(decoded) and (
-                language_score(decoded) < language_score(encoded) + 0.3
-            ):
-                continue  # raw bytes read about as well as the "decoded" ones
-            if all(_printable(b) for b in encoded):
-                # ciphertext that is itself printable is ambiguous with plain strings:
-                # demand mostly-lowercase output and no enclosing plaintext C-string
-                letters = [b for b in decoded if _is_alpha(b)]
-                lower = sum(1 for b in letters if b >= 0x61)
-                upper = len(letters) - lower
-                cased = lower >= 0.6 * len(letters) or upper >= 0.9 * len(letters)
-                if not cased or _IDENT_RE.fullmatch(encoded) or _inside_plain_string(data, start, end):
-                    continue
-            score = _letters(decoded) + 0.01 * sum(1 for b in decoded if 0x61 <= b <= 0x7A)
-            prev = best.get(start)
-            if prev is None or score > prev.score:
-                best[start] = _XorHit(start, key, decoded, encoded, score)
+        score = _letters(decoded) + 0.01 * sum(1 for b in decoded if 0x61 <= b <= 0x7A)
+        prev = best.get(start)
+        if prev is None or score > prev.score:
+            best[start] = _XorHit(start, key, decoded, encoded, score)
     # drop hits that are suffixes of a longer hit with the same key
     hits = sorted(best.values(), key=lambda h: h.offset)
     kept: list[_XorHit] = []
@@ -234,6 +261,7 @@ def _xor_findings(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=f"{len(hits) - len(strong)} weak XOR candidates suppressed in {region.name}",
+                    rule="deobfus/xor-noisy-region",
                     severity=Severity.INFO,
                     address=region.va or None,
                     evidence=f"{len(hits)} candidates under {len({h.key for h in hits})} "
@@ -252,6 +280,7 @@ def _xor_findings(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=f"Possible XOR string (key={hit.key:#04x})",
+                    rule="deobfus/xor-string",
                     severity=Severity.MEDIUM,
                     address=bin.offset_to_va(region, hit.offset) if region.va else None,
                     evidence=f"decoded : {text!r}\n"
@@ -382,6 +411,7 @@ def _stack_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title="Stack-string scan skipped",
+                rule="deobfus/stack-scan-skipped",
                 severity=Severity.INFO,
                 evidence=reason,
                 detail="Stack-string detection needs Capstone and an x86/x86_64 target.",
@@ -396,6 +426,7 @@ def _stack_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title=f"Stack string {text.decode('ascii')!r}",
+                rule="deobfus/stack-string",
                 severity=Severity.LOW,
                 address=first.address,  # type: ignore[attr-defined]
                 evidence=listing,

@@ -51,6 +51,7 @@ def _summary(bin: Binary) -> Finding:
     return Finding(
         module=MODULE,
         title=f"{bin.format} {bin.arch} binary",
+        rule="triage/summary",
         severity=Severity.INFO,
         address=bin.entrypoint,
         evidence=evidence,
@@ -68,6 +69,7 @@ def _entropy_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title=f"High-entropy section {region.name} ({region.entropy:.2f})",
+                rule="triage/high-entropy-section",
                 severity=Severity.MEDIUM,
                 address=region.va or None,
                 evidence=f"entropy={region.entropy:.4f} bits/byte, size={region.size:#x}\n"
@@ -92,6 +94,7 @@ def _sparse_imports(bin: Binary) -> Finding | None:
     return Finding(
         module=MODULE,
         title=f"Almost no imports ({len(bin.imports)}) with {exec_size:#x} bytes of code",
+        rule="triage/sparse-imports",
         severity=Severity.MEDIUM,
         address=largest.va or None,
         evidence=f"imports: {', '.join(bin.imports) or '(none)'}\n"
@@ -109,6 +112,7 @@ def _missing_section_headers(bin: Binary) -> Finding | None:
     return Finding(
         module=MODULE,
         title="ELF has no section header table",
+        rule="triage/no-section-headers",
         severity=Severity.MEDIUM,
         evidence=f"e_shnum = 0; analysis falls back to {len(bin.segments)} LOAD segment(s)",
         detail="Section headers are not needed at runtime; stripping them is a common "
@@ -124,6 +128,7 @@ def _upx_findings(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=f"UPX section name: {s.name}",
+                    rule="triage/upx-section",
                     severity=Severity.HIGH,
                     address=s.va or None,
                     evidence=f"section {s.name!r} va={s.va:#x} size={s.size:#x} "
@@ -138,6 +143,7 @@ def _upx_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title=f"UPX magic 'UPX!' at file offset {off:#x}",
+                rule="triage/upx-magic",
                 severity=Severity.HIGH,
                 address=bin.file_offset_to_va(off),
                 evidence=hexdump(bin.raw[max(0, off - 8) : off + 24], max(0, off - 8)),
