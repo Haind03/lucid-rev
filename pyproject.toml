@@ -9,10 +9,10 @@ description = "Reverse-engineering assistant: triage, auto-deobfuscation hints a
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "HaiND" },
+    { name = "HaiND", email = "haind@ptit.edu.vn" },
 ]
 maintainers = [
-    { name = "HaiND (Posts and Telecommunications Institute of Technology)" },
+    { name = "HaiND (Posts and Telecommunications Institute of Technology)", email = "haind@ptit.edu.vn" },
 ]
 keywords = ["reverse-engineering", "deobfuscation", "elf", "malware-analysis", "ctf", "binary-analysis", "security-research"]
 classifiers = [

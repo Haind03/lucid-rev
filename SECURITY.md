@@ -12,4 +12,5 @@ If you find a bug in `lucid` itself that could be triggered by a crafted input
 file (e.g. a crash, hang or excessive memory use when parsing), please open a
 private security advisory on GitHub
 (**Security → Report a vulnerability**) rather than a public issue. Include the
-lucid version, a minimal reproducer and the observed behaviour.
+lucid version, a minimal reproducer and the observed behaviour. Alternatively,
+contact the maintainer directly at <haind@ptit.edu.vn>.

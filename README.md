@@ -95,7 +95,8 @@ any program they test under.
 
 ## Author
 
-**HaiND** — Posts and Telecommunications Institute of Technology (PTIT), Vietnam.
+**HaiND** — Posts and Telecommunications Institute of Technology (PTIT), Vietnam
+· <haind@ptit.edu.vn>
 
 ## Citation
 
