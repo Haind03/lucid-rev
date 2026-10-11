@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lucid-rev"
+dynamic = ["version"]
+description = "Reverse-engineering assistant: triage, auto-deobfuscation hints and embedded shellcode detection for binaries."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "HaiND" },
+]
+maintainers = [
+    { name = "HaiND (Posts and Telecommunications Institute of Technology)" },
+]
+keywords = ["reverse-engineering", "deobfuscation", "elf", "malware-analysis", "ctf", "binary-analysis", "security-research"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "lief>=0.14",
+    "capstone>=5.0",
+    "pyelftools>=0.31",
+    "rich>=13",
+]
+
+[project.urls]
+Homepage = "https://github.com/haind03/lucid-rev"
+Repository = "https://github.com/haind03/lucid-rev"
+Issues = "https://github.com/haind03/lucid-rev/issues"
+Changelog = "https://github.com/haind03/lucid-rev/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+lucid = "lucid.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "lucid.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["lucid*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
