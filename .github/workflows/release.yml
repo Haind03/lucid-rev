@@ -1,12 +1,19 @@
 name: Release
 
+# Releases the version in lucid.__version__.
+# - push a tag v<version>, or
+# - run manually (Actions -> Release -> Run workflow) on a branch: the tag is
+#   created on that commit by the release step.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,46 +21,54 @@ jobs:
           python-version: "3.12"
       - run: pip install -e '.[dev]'
       - run: pytest -q
+      - name: Resolve release tag
+        id: version
+        run: |
+          tag="v$(python -c 'import lucid; print(lucid.__version__)')"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "${tag}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match lucid.__version__ (${tag})"; exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
   github-release:
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.test.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Refuse to overwrite an existing release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists"; exit 1
+          fi
       - name: Build wheel and sdist
         run: |
           pip install build twine
           python -m build
           twine check dist/*
-      - name: Check tag matches package version
-        run: |
-          version="$(python -c 'import lucid; print(lucid.__version__)')"
-          test "v${version}" = "${GITHUB_REF_NAME}" || {
-            echo "tag ${GITHUB_REF_NAME} does not match lucid.__version__ ${version}"; exit 1; }
       - name: Extract release notes from CHANGELOG
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '
+          awk -v v="${TAG#v}" '
             $0 ~ "^## \\[" v "\\]" { found = 1; next }
             found && /^## \[/ { exit }
             found && /^\[[^]]+\]: / { exit }
             found { print }
           ' CHANGELOG.md > notes.md
           test -s notes.md
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Create GitHub Release (and the tag when run manually)
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --title "lucid ${GITHUB_REF_NAME}" --notes-file notes.md --verify-tag
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
+            --title "lucid $TAG" --notes-file notes.md
 
   container:
-    needs: test
+    needs: [test, github-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,8 +86,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/lucid-rev
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.test.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.test.outputs.tag }}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
