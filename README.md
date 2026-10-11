@@ -8,7 +8,7 @@
   <a href="https://github.com/haind03/lucid-rev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/haind03/lucid-rev/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
-  <img alt="Status" src="https://img.shields.io/badge/status-alpha%20(M1)-orange">
+  <img alt="Status" src="https://img.shields.io/badge/status-alpha-orange">
   <img alt="Platform" src="https://img.shields.io/badge/target-ELF%20x86--64-lightgrey">
 </p>
 
@@ -20,7 +20,7 @@ analyst can get to the interesting code faster. Every finding carries concrete
 evidence (raw bytes, disassembly or the decoded string): heuristics are hints
 for a human analyst, never verdicts.
 
-## Features (Milestone 1)
+## Features
 
 | Module      | What it reports | Severity |
 |-------------|-----------------|----------|
@@ -36,8 +36,8 @@ for a human analyst, never verdicts.
 |             | NOP sleds ≥ 16 bytes (HIGH next to a GetPC stub) | MEDIUM / HIGH |
 |             | bare `MZ` / `call $+5` inside 256-byte windows with entropy > 6.5 | MEDIUM |
 
-**Out of scope for M1:** patching, emulation, dynamic execution, PE / Mach-O
-deep analysis.
+**Out of scope:** patching, emulation, dynamic execution, PE / Mach-O deep
+analysis.
 
 ## Installation
 
@@ -53,14 +53,14 @@ pip install -e '.[dev]'          # or: pip install -r requirements.txt
 ### From a release
 
 ```bash
-pip install https://github.com/Haind03/lucid-rev/releases/download/v0.1.0/lucid_rev-0.1.0-py3-none-any.whl
+pip install https://github.com/Haind03/lucid-rev/releases/download/v0.2.0/lucid_rev-0.2.0-py3-none-any.whl
 ```
 
 ### Docker
 
 ```bash
-docker pull ghcr.io/haind03/lucid-rev:0.1.0
-docker run --rm -v "$PWD:/work" ghcr.io/haind03/lucid-rev:0.1.0 analyze /work/sample.elf
+docker pull ghcr.io/haind03/lucid-rev:0.2.0
+docker run --rm -v "$PWD:/work" ghcr.io/haind03/lucid-rev:0.2.0 analyze /work/sample.elf
 ```
 
 The container runs as an unprivileged user; the report is written next to the
@@ -69,13 +69,66 @@ input inside the mounted directory.
 ## Usage
 
 ```bash
-lucid analyze /path/to/sample.elf            # report -> sample.elf.lucid.md
-lucid analyze sample.elf -o report.md        # custom report path
+lucid analyze sample.elf                       # Markdown -> sample.elf.lucid.md
+lucid analyze sample.elf -f json               # JSON     -> sample.elf.lucid.json
+lucid analyze sample.elf -f sarif -o out.sarif # SARIF 2.1.0
+lucid analyze sample.elf -f json -o - -q       # JSON on stdout, nothing else
+lucid analyze sample.elf --min-severity medium # hide INFO/LOW findings
+lucid analyze sample.elf --fail-on high        # exit 2 if any HIGH finding
 ```
 
-The report is printed to the terminal (coloured by severity with `rich`) and
-written as Markdown to `<file>.lucid.md`. Exit code is `0` on success, `1` if
-the file cannot be parsed.
+| Option | Meaning |
+|---|---|
+| `-f, --format md\|json\|sarif` | report format (default `md`) |
+| `-o, --output PATH` | report path (default `<file>.lucid.<format>`); `-` = stdout |
+| `--min-severity SEV` | drop findings below `SEV` from the report and terminal |
+| `--fail-on SEV` | exit `2` when any finding is at or above `SEV` — evaluated on **all** findings, independent of `--min-severity` |
+| `-q, --quiet` | no terminal output |
+
+Exit codes: `0` success, `1` error (unparsable input, unwritable report),
+`2` `--fail-on` triggered.
+
+### Report formats
+
+- **Markdown** — human-readable summary plus one section per module.
+- **JSON** (`"schema": "lucid-report/1"`) — target path, size, SHA-256, format
+  and architecture; per-module status; every finding with `rule`, `severity`,
+  `address` (int and hex), `detail`, `evidence` and `meta`.
+- **SARIF 2.1.0** — validated against the OASIS schema; one result per
+  finding with the binary location as `physicalLocation.address.absoluteAddress`
+  and evidence in `properties`. Opens in SARIF viewers such as the VS Code
+  SARIF Viewer. GitHub code scanning expects source line regions, so binary-only
+  results may not display there.
+
+### Rules
+
+Every finding carries a stable rule id (also used as the SARIF `ruleId`):
+
+| Rule | Max severity | Meaning |
+|---|---|---|
+| `triage/summary` | INFO | Format, architecture, entrypoint and section/import counts. |
+| `triage/high-entropy-section` | MEDIUM | Section entropy above 7.0 bits/byte: likely packed, encrypted or compressed. |
+| `triage/sparse-imports` | MEDIUM | Almost no imports next to a large executable region, typical of packers. |
+| `triage/no-section-headers` | MEDIUM | ELF without a section header table. |
+| `triage/upx-section` | HIGH | Section name created by the UPX packer. |
+| `triage/upx-magic` | HIGH | 'UPX!' marker found in the file. |
+| `deobfus/xor-string` | MEDIUM | NUL-terminated ASCII string recovered with a single-byte XOR key. |
+| `deobfus/xor-noisy-region` | INFO | Region where many unrelated XOR keys decode short text; weak candidates suppressed. |
+| `deobfus/stack-string` | LOW | String assembled from immediate stores to consecutive stack slots. |
+| `deobfus/stack-scan-skipped` | INFO | Stack-string scan unavailable (Capstone missing or unsupported architecture). |
+| `shellcode/embedded-pe` | HIGH | DOS header with a valid PE signature inside data. |
+| `shellcode/embedded-mz` | MEDIUM | 'MZ' header with a plausible e_lfanew inside a high-entropy window. |
+| `shellcode/embedded-elf` | HIGH | ELF magic with a valid e_ident inside data. |
+| `shellcode/getpc-stub` | HIGH | GetPC sequence (call $+5; pop or fldz; fnstenv) inside data. |
+| `shellcode/getpc-call5` | MEDIUM | call $+5 without a following pop inside a high-entropy window. |
+| `shellcode/nop-sled` | HIGH | Run of at least 16 single-byte NOPs inside data. |
+
+### In CI
+
+```yaml
+- run: pip install https://github.com/Haind03/lucid-rev/releases/download/v0.2.0/lucid_rev-0.2.0-py3-none-any.whl
+- run: lucid analyze build/app -f json -o lucid.json --fail-on high
+```
 
 ## Example
 
@@ -110,7 +163,9 @@ an Ubuntu 24.04 `/usr/bin`, and against synthetic positives.
   case, so every plain string would match). Candidates must read clearly
   better than the raw bytes under a small English letter/bigram model, contain
   no raw NUL, not be periodic tables, and not be substrings of longer
-  plaintext. Measured: ~0.2 findings per system binary; recall ≈ 87 % on a
+  plaintext. The scan classifies bytes per key with a translate table and
+  locates terminated runs with `bytes.find`, so all 484 binaries are scanned in
+  about 30 s. Measured: ~0.2 findings per system binary; recall ≈ 87 % on a
   set of typical strings (paths, DLL/API names, URLs, flags) across 8 keys.
   Strings containing the key character itself and very short strings are
   missed. Regions that light up under many unrelated keys (lookup tables,
@@ -133,18 +188,20 @@ an Ubuntu 24.04 `/usr/bin`, and against synthetic positives.
 lucid/
 ├── cli.py            # argparse entry point: `lucid analyze <file>`
 ├── finding.py        # Finding dataclass + Severity enum (shared contract)
+├── rules.py          # catalogue of rule ids emitted by the modules
 ├── core/
 │   ├── loader.py     # Binary: LIEF-backed view (sections, segments, imports, entropy)
 │   ├── disasm.py     # Capstone helpers (optional dependency, degrades gracefully)
-│   └── report.py     # Markdown + rich terminal renderers
+│   └── report.py     # Markdown / JSON / SARIF + rich terminal renderers
 └── modules/          # each module: run(bin: Binary) -> list[Finding]
     ├── triage.py
     ├── deobfus.py
     └── shellcode.py
 ```
 
-Adding a module = write `run(bin) -> list[Finding]` and list its name in
-`lucid/modules/__init__.py`. A module that fails or misses an optional dependency
+Adding a module = write `run(bin) -> list[Finding]`, list its name in
+`lucid/modules/__init__.py` and register its rule ids in `lucid/rules.py`
+(a test fails if a finding uses an uncatalogued rule). A module that fails or misses an optional dependency
 is reported as *unavailable* instead of crashing the run.
 
 ## Testing
@@ -183,7 +240,7 @@ If you use `lucid` in academic work, please cite:
   year         = {2026},
   institution  = {Posts and Telecommunications Institute of Technology},
   url          = {https://github.com/haind03/lucid-rev},
-  version      = {0.1.0}
+  version      = {0.2.0}
 }
 ```
 

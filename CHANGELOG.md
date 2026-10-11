@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-11
+
+Milestone 2: reporting and integration.
+
+### Added
+- `--format json` (schema `lucid-report/1`, with target SHA-256, size and
+  architecture) and `--format sarif` (SARIF 2.1.0, validated against the
+  OASIS schema); `-o -` writes the report to stdout.
+- `--min-severity` to hide lower findings, `--fail-on` to exit with code 2
+  when a finding reaches a severity, `-q` for no terminal output.
+- Stable rule ids on every finding (e.g. `deobfus/xor-string`) and a rule
+  catalogue in `lucid/rules.py`.
+
+### Changed
+- XOR string scan is about 7x faster (484 system binaries: 3m55s to 33s) with
+  byte-for-byte identical findings.
+- Default report path is `<file>.lucid.<format>`.
+
 ## [0.1.0] - 2026-10-11
 
 Milestone 1.
@@ -27,5 +45,6 @@ Milestone 1.
 - Release workflow (tag push or manual run): wheel/sdist attached to the GitHub
   Release and a container image published to `ghcr.io/haind03/lucid-rev`.
 
-[Unreleased]: https://github.com/Haind03/lucid-rev/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Haind03/lucid-rev/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Haind03/lucid-rev/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Haind03/lucid-rev/releases/tag/v0.1.0
