@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from lucid.core import disasm
@@ -167,6 +168,23 @@ class _XorHit:
     score: float
 
 
+def xor_candidates(data: bytes) -> Iterator[tuple[int, int, int]]:
+    """Yield (key, start, end) for every maximal run of >= MIN_LEN bytes that decode
+    to printable ASCII under ``key`` and are followed by the key byte (NUL once
+    decoded). Raw 0x00 never belongs to a run. ``end`` excludes the terminator.
+    """
+    for key in _XOR_KEYS:
+        mask = data.translate(_MASK_TABLES[key])
+        pos = mask.find(_NEEDLE)
+        while pos != -1:
+            end = pos + MIN_LEN  # index of the terminator
+            start = pos
+            while start > 0 and mask[start - 1] == _P:
+                start -= 1  # extend back to the start of the printable run
+            yield key, start, end
+            pos = mask.find(_NEEDLE, end + 1)
+
+
 def find_xor_strings(data: bytes) -> list[_XorHit]:
     """Find NUL-terminated printable strings hidden under a single-byte XOR key.
 
@@ -179,40 +197,32 @@ def find_xor_strings(data: bytes) -> list[_XorHit]:
     only flips letter case (plain strings would all match).
     """
     best: dict[int, _XorHit] = {}
-    for key, table in _XOR_TABLES.items():
-        mask = data.translate(_MASK_TABLES[key])
-        pos = mask.find(_NEEDLE)
-        while pos != -1:
-            end = pos + MIN_LEN  # index of the terminator
-            start = pos
-            while start > 0 and mask[start - 1] == _P:
-                start -= 1  # extend back to the start of the printable run
-            pos = mask.find(_NEEDLE, end + 1)
-            encoded = data[start:end]
-            decoded = encoded.translate(table)
-            if _periodic(encoded) or not looks_like_text(decoded):
+    for key, start, end in xor_candidates(data):
+        encoded = data[start:end]
+        decoded = encoded.translate(_XOR_TABLES[key])
+        if _periodic(encoded) or not looks_like_text(decoded):
+            continue
+        controls = sum(1 for b in encoded if b < 0x20)
+        if (controls >= 0.7 * len(encoded) and len(decoded) < 10
+                and not _FLAG_RE.fullmatch(decoded) and _bigram_ratio(decoded) < 0.4):
+            continue  # small-integer tables (varints, offsets) XOR 0x40..0x7f
+        if not _FLAG_RE.fullmatch(decoded) and (
+            language_score(decoded) < language_score(encoded) + 0.3
+        ):
+            continue  # raw bytes read about as well as the "decoded" ones
+        if all(_printable(b) for b in encoded):
+            # ciphertext that is itself printable is ambiguous with plain strings:
+            # demand mostly-lowercase output and no enclosing plaintext C-string
+            letters = [b for b in decoded if _is_alpha(b)]
+            lower = sum(1 for b in letters if b >= 0x61)
+            upper = len(letters) - lower
+            cased = lower >= 0.6 * len(letters) or upper >= 0.9 * len(letters)
+            if not cased or _IDENT_RE.fullmatch(encoded) or _inside_plain_string(data, start, end):
                 continue
-            controls = sum(1 for b in encoded if b < 0x20)
-            if (controls >= 0.7 * len(encoded) and len(decoded) < 10
-                    and not _FLAG_RE.fullmatch(decoded) and _bigram_ratio(decoded) < 0.4):
-                continue  # small-integer tables (varints, offsets) XOR 0x40..0x7f
-            if not _FLAG_RE.fullmatch(decoded) and (
-                language_score(decoded) < language_score(encoded) + 0.3
-            ):
-                continue  # raw bytes read about as well as the "decoded" ones
-            if all(_printable(b) for b in encoded):
-                # ciphertext that is itself printable is ambiguous with plain strings:
-                # demand mostly-lowercase output and no enclosing plaintext C-string
-                letters = [b for b in decoded if _is_alpha(b)]
-                lower = sum(1 for b in letters if b >= 0x61)
-                upper = len(letters) - lower
-                cased = lower >= 0.6 * len(letters) or upper >= 0.9 * len(letters)
-                if not cased or _IDENT_RE.fullmatch(encoded) or _inside_plain_string(data, start, end):
-                    continue
-            score = _letters(decoded) + 0.01 * sum(1 for b in decoded if 0x61 <= b <= 0x7A)
-            prev = best.get(start)
-            if prev is None or score > prev.score:
-                best[start] = _XorHit(start, key, decoded, encoded, score)
+        score = _letters(decoded) + 0.01 * sum(1 for b in decoded if 0x61 <= b <= 0x7A)
+        prev = best.get(start)
+        if prev is None or score > prev.score:
+            best[start] = _XorHit(start, key, decoded, encoded, score)
     # drop hits that are suffixes of a longer hit with the same key
     hits = sorted(best.values(), key=lambda h: h.offset)
     kept: list[_XorHit] = []
