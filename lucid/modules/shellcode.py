@@ -36,6 +36,17 @@ _CALL5_RE = re.compile(rb"\xe8\x00\x00\x00\x00")
 _SLED_RE = re.compile(rb"\x90{%d,}" % MIN_SLED)
 
 
+_RULES = {
+    ("mz", Severity.HIGH): "shellcode/embedded-pe",
+    ("mz", Severity.MEDIUM): "shellcode/embedded-mz",
+    ("elf", Severity.HIGH): "shellcode/embedded-elf",
+    ("getpc", Severity.HIGH): "shellcode/getpc-stub",
+    ("getpc", Severity.MEDIUM): "shellcode/getpc-call5",
+    ("sled", Severity.HIGH): "shellcode/nop-sled",
+    ("sled", Severity.MEDIUM): "shellcode/nop-sled",
+}
+
+
 @dataclass
 class _Hit:
     kind: str
@@ -185,6 +196,7 @@ def run(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=hit.title,
+                    rule=_RULES[(hit.kind, hit.severity)],
                     severity=hit.severity,
                     address=va if region.va else None,
                     evidence=_evidence(bin, data, hit, va),

@@ -28,8 +28,28 @@ class Finding:
     evidence: str = ""  # bytes / disassembly / decoded string
     detail: str = ""  # why this matters, 1-3 sentences
     meta: dict = field(default_factory=dict)
+    rule: str = ""  # stable rule id, e.g. "deobfus/xor-string"
 
     @property
     def address_str(self) -> str:
         """Address formatted as hex, or '-' when the finding has none."""
         return f"{self.address:#x}" if self.address is not None else "-"
+
+    @property
+    def rule_id(self) -> str:
+        """Stable identifier of the check that produced this finding."""
+        return self.rule or f"{self.module}/generic"
+
+    def to_dict(self) -> dict:
+        """JSON-serialisable representation (address as both int and hex string)."""
+        return {
+            "rule": self.rule_id,
+            "module": self.module,
+            "title": self.title,
+            "severity": self.severity.name,
+            "address": self.address,
+            "address_hex": self.address_str if self.address is not None else None,
+            "detail": self.detail,
+            "evidence": self.evidence,
+            "meta": self.meta,
+        }

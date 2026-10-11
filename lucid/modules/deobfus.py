@@ -234,6 +234,7 @@ def _xor_findings(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=f"{len(hits) - len(strong)} weak XOR candidates suppressed in {region.name}",
+                    rule="deobfus/xor-noisy-region",
                     severity=Severity.INFO,
                     address=region.va or None,
                     evidence=f"{len(hits)} candidates under {len({h.key for h in hits})} "
@@ -252,6 +253,7 @@ def _xor_findings(bin: Binary) -> list[Finding]:
                 Finding(
                     module=MODULE,
                     title=f"Possible XOR string (key={hit.key:#04x})",
+                    rule="deobfus/xor-string",
                     severity=Severity.MEDIUM,
                     address=bin.offset_to_va(region, hit.offset) if region.va else None,
                     evidence=f"decoded : {text!r}\n"
@@ -382,6 +384,7 @@ def _stack_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title="Stack-string scan skipped",
+                rule="deobfus/stack-scan-skipped",
                 severity=Severity.INFO,
                 evidence=reason,
                 detail="Stack-string detection needs Capstone and an x86/x86_64 target.",
@@ -396,6 +399,7 @@ def _stack_findings(bin: Binary) -> list[Finding]:
             Finding(
                 module=MODULE,
                 title=f"Stack string {text.decode('ascii')!r}",
+                rule="deobfus/stack-string",
                 severity=Severity.LOW,
                 address=first.address,  # type: ignore[attr-defined]
                 evidence=listing,
