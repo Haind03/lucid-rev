@@ -115,7 +115,7 @@ def _scan(data: bytes, windows: list[tuple[int, float]]) -> Iterator[_Hit]:
         if pe is not None:
             yield _Hit("mz", m.start(), 2, Severity.HIGH, "Embedded PE image (MZ + PE header)",
                        f"DOS header whose e_lfanew points to a PE signature at +{pe - m.start():#x}: "
-                       "a complete Windows executable is stored inside this binary.")
+                       "a Windows PE image appears to be stored inside this binary.")
         elif _in_candidate(m.start(), windows) is not None and _e_lfanew(data, m.start()):
             yield _Hit("mz", m.start(), 2, Severity.MEDIUM, "Possible embedded MZ header",
                        "'MZ' magic with a plausible e_lfanew inside a high-entropy window, but "
