@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Reverse-engineering assistant: triage, auto-deobfuscation hints and embedded shellcode detection for binaries."
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 authors = [
     { name = "HaiND", email = "haind@ptit.edu.vn" },
 ]
