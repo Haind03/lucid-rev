@@ -1,0 +1,22 @@
+lucid
+Copyright (c) 2026 HaiND, Posts and Telecommunications Institute of Technology (PTIT)
+Licensed under the MIT License (see LICENSE).
+
+This distribution bundles third-party YARA rules in lucid/yara_rules/. Each
+directory keeps the upstream LICENSE file; pinned commits, exclusions and
+modifications are recorded in lucid/yara_rules/SOURCES.json and reproduced by
+scripts/sync_yara_rules.py.
+
+findcrypt-yara  (lucid/yara_rules/findcrypt)
+  https://github.com/polymorf/findcrypt-yara
+  Copyright (c) 2019, BERARD David. BSD 3-Clause License.
+  Modified: rules Big_Numbers0-5 removed.
+
+reversinglabs-yara-rules  (lucid/yara_rules/reversinglabs)
+  https://github.com/reversinglabs/reversinglabs-yara-rules
+  Copyright (c) 2020 ReversingLabs. MIT License.
+  Not included: yara/certificate (PE code-signing blocklist).
+
+bartblaze Yara-rules  (lucid/yara_rules/bartblaze)
+  https://github.com/bartblaze/Yara-rules
+  Copyright (c) 2020 Bart. MIT License. TLP:CLEAR; rule meta retained.

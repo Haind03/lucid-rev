@@ -1,0 +1,34 @@
+[
+  {
+    "name": "findcrypt",
+    "url": "https://github.com/polymorf/findcrypt-yara",
+    "commit": "044644b9c52ae3e7b2305bac15b0c12c9e31a282",
+    "license": "BSD-3-Clause",
+    "files": 1,
+    "excluded": [],
+    "notes": "Rules Big_Numbers0-5 removed: they match any 20-64 character hex string (build ids, hashes), cost ~98% of scan time and carry no crypto signal.",
+    "default_severity": "INFO"
+  },
+  {
+    "name": "reversinglabs",
+    "url": "https://github.com/reversinglabs/reversinglabs-yara-rules",
+    "commit": "e0a0be54aa1e11ccfd6854e4f19e9476f328fd84",
+    "license": "MIT",
+    "files": 309,
+    "excluded": [
+      "yara/certificate/**"
+    ],
+    "notes": "yara/certificate excluded: code-signing certificate blocklist for PE files only.",
+    "default_severity": "HIGH"
+  },
+  {
+    "name": "bartblaze",
+    "url": "https://github.com/bartblaze/Yara-rules",
+    "commit": "5cc871d82361de8a80d387ec8bbd01fe4258b4a9",
+    "license": "MIT",
+    "files": 110,
+    "excluded": [],
+    "notes": "TLP:CLEAR; rule meta retained as requested by the author.",
+    "default_severity": "HIGH"
+  }
+]
