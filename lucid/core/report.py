@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from lucid import __version__
 from lucid.finding import Finding, Severity
 
-MODULE_ORDER = ("triage", "deobfus", "shellcode")
+MODULE_ORDER = ("triage", "deobfus", "shellcode", "yarascan")
 _SEV_STYLE = {
     Severity.INFO: "cyan",
     Severity.LOW: "green",
@@ -173,6 +173,8 @@ def render_sarif(
     groups = _group(findings, modules)
     ordered = [f for items in groups.values() for f in items]
     used = sorted({f.rule_id for f in ordered} | {r for r in RULES})
+    # dynamic rules (yara/<source>/<rule>) take their description from the match
+    described = {f.rule_id: f.meta.get("description") for f in ordered if f.meta.get("description")}
     rule_index = {rid: i for i, rid in enumerate(used)}
     rules = []
     for rid in used:
@@ -180,7 +182,7 @@ def render_sarif(
         rules.append({
             "id": rid,
             "name": rule.name if rule else rid.rsplit("/", 1)[-1],
-            "shortDescription": {"text": rule.description if rule else rid},
+            "shortDescription": {"text": rule.description if rule else described.get(rid, rid)},
             "defaultConfiguration": {
                 "level": _SARIF_LEVEL[rule.severity] if rule else "note"
             },

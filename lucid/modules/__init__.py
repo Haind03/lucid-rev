@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 from lucid.finding import Finding
 
-_MODULES: tuple[str, ...] = ("triage", "deobfus", "shellcode")
+_MODULES: tuple[str, ...] = ("triage", "deobfus", "shellcode", "yarascan")
 
 REGISTRY: list[Callable[..., list[Finding]]] = []
 UNAVAILABLE: dict[str, str] = {}

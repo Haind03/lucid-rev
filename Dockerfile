@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.title="lucid" \
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY lucid ./lucid
-RUN pip install --no-cache-dir . && rm -rf /src
+RUN pip install --no-cache-dir ".[yara]" && rm -rf /src
 
 RUN useradd --create-home --uid 1000 analyst
 USER analyst

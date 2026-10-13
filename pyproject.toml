@@ -44,7 +44,8 @@ Issues = "https://github.com/haind03/lucid-rev/issues"
 Changelog = "https://github.com/haind03/lucid-rev/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+yara = ["yara-python>=4.3"]
+dev = ["pytest>=8", "yara-python>=4.3"]
 
 [project.scripts]
 lucid = "lucid.cli:main"
@@ -54,6 +55,9 @@ version = { attr = "lucid.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["lucid*"]
+
+[tool.setuptools.package-data]
+lucid = ["yara_rules/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
