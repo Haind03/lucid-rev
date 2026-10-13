@@ -35,14 +35,16 @@ def findings(sample_elf: Sample) -> list[Finding]:
 def test_every_emitted_rule_is_catalogued(findings: list[Finding], upx_like_elf: Path) -> None:
     emitted = {f.rule for f in findings + _all_findings(upx_like_elf)}
     assert "" not in emitted, "a finding was created without a rule id"
-    assert emitted <= set(RULES), emitted - set(RULES)
+    static = {r for r in emitted if not r.startswith("yara/")}  # yara ids are dynamic
+    assert static <= set(RULES), static - set(RULES)
 
 
 def test_rule_ids_are_namespaced_by_module(findings: list[Finding]) -> None:
     for rule in RULES.values():
-        assert rule.id.split("/")[0] in {"triage", "deobfus", "shellcode"}
+        assert rule.id.split("/")[0] in {"triage", "deobfus", "shellcode", "yarascan"}
     for f in findings:
-        assert f.rule.startswith(f.module + "/")
+        prefix = "yara/" if f.module == "yarascan" else f.module + "/"
+        assert f.rule.startswith(prefix)
 
 
 # JSON ------------------------------------------------------------------------
@@ -55,7 +57,8 @@ def test_json_report(findings: list[Finding], sample_elf: Sample) -> None:
     assert doc["target"]["sha256"] == "ab" * 32
     assert doc["summary"]["total"] == len(findings) == len(doc["findings"])
     assert doc["summary"]["HIGH"] == sum(f.severity == Severity.HIGH for f in findings)
-    assert doc["modules"] == {"triage": "ok", "deobfus": "ok", "shellcode": "failed: X"}
+    assert doc["modules"] == {"triage": "ok", "deobfus": "ok", "shellcode": "failed: X",
+                              "yarascan": "ok"}
     xor = next(f for f in doc["findings"] if f["rule"] == "deobfus/xor-string")
     assert xor["address"] == sample_elf.symbols["xor_secret"]
     assert xor["address_hex"] == hex(sample_elf.symbols["xor_secret"])

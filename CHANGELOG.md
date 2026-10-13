@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-13
+
+Milestone 3: YARA rules.
+
+### Added
+- `yarascan` module (optional extra `lucid-rev[yara]`): YARA matches become
+  findings with rule id `yara/<source>/<rule>`, clustered hit address, matched
+  bytes and rule metadata; severity derived from rule `score` / `severity` /
+  `category`.
+- Bundled rule sets with pinned commits and upstream licences: findcrypt-yara
+  (BSD-3-Clause, `Big_Numbers0-5` removed), reversinglabs-yara-rules (MIT,
+  without the PE certificate blocklist) and bartblaze/Yara-rules (MIT);
+  `NOTICE` and `scripts/sync_yara_rules.py` to rebuild them.
+- `--yara PATH` (repeatable, files or directories) and `--no-bundled-yara`;
+  common externals are defined so community sets such as signature-base compile.
+
 ## [0.2.0] - 2026-10-11
 
 Milestone 2: reporting and integration.
@@ -45,6 +61,7 @@ Milestone 1.
 - Release workflow (tag push or manual run): wheel/sdist attached to the GitHub
   Release and a container image published to `ghcr.io/haind03/lucid-rev`.
 
-[Unreleased]: https://github.com/Haind03/lucid-rev/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Haind03/lucid-rev/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Haind03/lucid-rev/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Haind03/lucid-rev/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Haind03/lucid-rev/releases/tag/v0.1.0

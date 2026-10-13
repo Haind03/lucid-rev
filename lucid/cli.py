@@ -51,6 +51,10 @@ def _build_parser() -> argparse.ArgumentParser:
                          help=f"exit with code {EXIT_FINDINGS} if a finding is at or above SEV")
     analyze.add_argument("-q", "--quiet", action="store_true",
                          help="do not print the report to the terminal")
+    analyze.add_argument("--yara", action="append", default=[], metavar="PATH",
+                         help="extra YARA rule file or directory (repeatable)")
+    analyze.add_argument("--no-bundled-yara", action="store_true",
+                         help="do not load the bundled YARA rule sets")
     return parser
 
 
@@ -77,6 +81,8 @@ def analyze(
     min_severity: Severity = Severity.INFO,
     fail_on: Severity | None = None,
     quiet: bool = False,
+    yara_paths: list[str] | None = None,
+    bundled_yara: bool = True,
 ) -> int:
     """Run every registered module on ``path``, print and save the report."""
     from rich.console import Console
@@ -86,6 +92,17 @@ def analyze(
     from lucid.modules import REGISTRY, UNAVAILABLE
 
     err = Console(stderr=True)
+    if yara_paths or not bundled_yara:
+        if "yarascan" in UNAVAILABLE:
+            err.print(f"[bold red]error:[/] --yara needs yara-python ({UNAVAILABLE['yarascan']})")
+            return EXIT_ERROR
+        from lucid.modules import yarascan
+
+        try:
+            yarascan.configure(yara_paths, bundled=bundled_yara)
+        except yarascan.YaraConfigError as exc:
+            err.print(f"[bold red]error:[/] {exc}")
+            return EXIT_ERROR
     try:
         binary = Binary(path)
     except ValueError as exc:
@@ -139,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "analyze":
         return analyze(args.file, args.output, args.format, args.min_severity,
-                       args.fail_on, args.quiet)
+                       args.fail_on, args.quiet, args.yara, not args.no_bundled_yara)
     return EXIT_ERROR
 
 

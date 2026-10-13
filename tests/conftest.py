@@ -98,3 +98,20 @@ def sample_elf(tmp_path_factory: pytest.TempPathFactory) -> Sample:
 def upx_like_elf(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """ELF carrying UPX indicators (section name and 'UPX!' magic) without being packed."""
     return _compile(tmp_path_factory.mktemp("upx"), "upx_like", UPX_SOURCE)
+
+
+CRYPTO_SOURCE = """
+/* SHA-256 initial hash values: what findcrypt's SHA256_Constants looks for. */
+const unsigned int sha256_init[8] = {
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+};
+int main(void) { return (int)sha256_init[0]; }
+"""
+
+
+@pytest.fixture(scope="session")
+def crypto_elf(tmp_path_factory: pytest.TempPathFactory) -> Sample:
+    """ELF embedding the SHA-256 initial hash values in .rodata."""
+    path = _compile(tmp_path_factory.mktemp("crypto"), "crypto", CRYPTO_SOURCE)
+    return Sample(path, _symbols(path))

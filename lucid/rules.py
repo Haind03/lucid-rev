@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 HaiND, Posts and Telecommunications Institute of Technology (PTIT)
-"""Catalogue of every rule a module can emit (used by the SARIF report and tests)."""
+"""Catalogue of every rule a module can emit (used by the SARIF report and tests).
+
+YARA matches use dynamic ids ``yara/<source>/<rule name>`` and are not listed
+here; their description comes from the rule's own metadata.
+"""
 
 from __future__ import annotations
 
@@ -62,5 +66,7 @@ RULES: dict[str, Rule] = {
              Severity.MEDIUM),
         Rule("shellcode/nop-sled", "NopSled",
              "Run of at least 16 single-byte NOPs inside data.", Severity.HIGH),
+        Rule("yarascan/timeout", "YaraTimeout",
+             "YARA scan exceeded its time budget; results are incomplete.", Severity.INFO),
     )
 }

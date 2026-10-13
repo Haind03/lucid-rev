@@ -35,6 +35,7 @@ for a human analyst, never verdicts.
 |             | GetPC stubs (`call $+5; pop r`, `fldz; fnstenv [esp-0xc]`) | HIGH |
 |             | NOP sleds ≥ 16 bytes (HIGH next to a GetPC stub) | MEDIUM / HIGH |
 |             | bare `MZ` / `call $+5` inside 256-byte windows with entropy > 6.5 | MEDIUM |
+| `yarascan`  | bundled YARA sets (crypto constants, malware families, packers/protectors) and your own rules via `--yara` | from rule metadata |
 
 **Out of scope:** patching, emulation, dynamic execution, PE / Mach-O deep
 analysis.
@@ -47,20 +48,21 @@ Requires Python ≥ 3.11.
 git clone https://github.com/haind03/lucid-rev.git
 cd lucid-rev
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'          # or: pip install -r requirements.txt
+pip install -e '.[dev]'          # includes yara-python for the yarascan module
+# runtime only: pip install -e '.[yara]'  (without the extra, yarascan is reported unavailable)
 ```
 
 ### From a release
 
 ```bash
-pip install https://github.com/Haind03/lucid-rev/releases/download/v0.2.0/lucid_rev-0.2.0-py3-none-any.whl
+pip install "lucid-rev[yara] @ https://github.com/Haind03/lucid-rev/releases/download/v0.3.0/lucid_rev-0.3.0-py3-none-any.whl"
 ```
 
 ### Docker
 
 ```bash
-docker pull ghcr.io/haind03/lucid-rev:0.2.0
-docker run --rm -v "$PWD:/work" ghcr.io/haind03/lucid-rev:0.2.0 analyze /work/sample.elf
+docker pull ghcr.io/haind03/lucid-rev:0.3.0
+docker run --rm -v "$PWD:/work" ghcr.io/haind03/lucid-rev:0.3.0 analyze /work/sample.elf
 ```
 
 The container runs as an unprivileged user; the report is written next to the
@@ -84,6 +86,8 @@ lucid analyze sample.elf --fail-on high        # exit 2 if any HIGH finding
 | `--min-severity SEV` | drop findings below `SEV` from the report and terminal |
 | `--fail-on SEV` | exit `2` when any finding is at or above `SEV` — evaluated on **all** findings, independent of `--min-severity` |
 | `-q, --quiet` | no terminal output |
+| `--yara PATH` | extra YARA rule file or directory (`.yar`, `.yara`, `.rules`), repeatable |
+| `--no-bundled-yara` | skip the bundled rule sets |
 
 Exit codes: `0` success, `1` error (unparsable input, unwritable report),
 `2` `--fail-on` triggered.
@@ -123,10 +127,47 @@ Every finding carries a stable rule id (also used as the SARIF `ruleId`):
 | `shellcode/getpc-call5` | MEDIUM | call $+5 without a following pop inside a high-entropy window. |
 | `shellcode/nop-sled` | HIGH | Run of at least 16 single-byte NOPs inside data. |
 
+### YARA rules
+
+`yarascan` runs every rule over the raw file. A match becomes a finding with
+rule id `yara/<source>/<rule>`, the address where its string hits cluster,
+the matched bytes and the rule metadata. Severity comes from the rule's
+`score` (≥ 75 HIGH, ≥ 50 MEDIUM, ≥ 25 LOW), `severity` or `category`
+(`MALWARE`/`EXPLOIT` → HIGH, `TOOL` → MEDIUM, `PUA` → LOW, `INFO` → INFO), else
+from the source default.
+
+**Bundled** (permissive licences only, pinned commits in
+`lucid/yara_rules/SOURCES.json`, rebuilt by `scripts/sync_yara_rules.py`):
+
+| Source | Licence | Content | Default |
+|---|---|---|---|
+| [findcrypt-yara](https://github.com/polymorf/findcrypt-yara) | BSD-3-Clause | 120 crypto-constant rules (AES, SHA, MD5, CRC32, Base64, TEA, Blowfish, …); `Big_Numbers0-5` removed — generic hex-string regexes that took 98 % of scan time | INFO |
+| [reversinglabs-yara-rules](https://github.com/reversinglabs/reversinglabs-yara-rules) | MIT | 309 malware-family files (22 Linux); `certificate/` PE blocklist excluded | HIGH |
+| [bartblaze/Yara-rules](https://github.com/bartblaze/Yara-rules) | MIT | 110 files incl. packer/protector stubs (VMProtect, Enigma, PyInstaller, .NET Reactor) | per `category` |
+
+On the 484 ELF files of an Ubuntu 24.04 `/usr/bin` the bundled sets produce
+117 findings, all `INFO` crypto constants (e.g. SHA-256 tables in `git`), and
+no finding above `INFO`.
+
+**Community sets** with other licences are not redistributed; download them
+and pass the path:
+
+```bash
+lucid analyze sample.elf --yara signature-base/yara                   # DRL 1.1
+lucid analyze sample.elf --yara protections-artifacts/yara/rules      # Elastic License 2.0
+lucid analyze sample.elf --yara yara-rules-core.yar                   # YARA Forge core
+```
+
+All three load (signature-base needs the `filename`/`filepath`/`extension`/
+`filetype`/`owner` externals, which lucid defines) and raise no finding on the
+484 system binaries; the Elastic and YARA Forge sets flag an ELF embedding the
+EICAR test string. A missing path or a rule that fails to compile stops the run
+with exit code 1 and names the file.
+
 ### In CI
 
 ```yaml
-- run: pip install https://github.com/Haind03/lucid-rev/releases/download/v0.2.0/lucid_rev-0.2.0-py3-none-any.whl
+- run: pip install "lucid-rev[yara] @ https://github.com/Haind03/lucid-rev/releases/download/v0.3.0/lucid_rev-0.3.0-py3-none-any.whl"
 - run: lucid analyze build/app -f json -o lucid.json --fail-on high
 ```
 
@@ -196,7 +237,8 @@ lucid/
 └── modules/          # each module: run(bin: Binary) -> list[Finding]
     ├── triage.py
     ├── deobfus.py
-    └── shellcode.py
+    ├── shellcode.py
+    └── yarascan.py   # YARA rules from lucid/yara_rules/ plus --yara paths
 ```
 
 Adding a module = write `run(bin) -> list[Finding]`, list its name in
@@ -240,11 +282,12 @@ If you use `lucid` in academic work, please cite:
   year         = {2026},
   institution  = {Posts and Telecommunications Institute of Technology},
   url          = {https://github.com/haind03/lucid-rev},
-  version      = {0.2.0}
+  version      = {0.3.0}
 }
 ```
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). Bundled third-party YARA rules keep
+their own licences (BSD-3-Clause, MIT); see [NOTICE](NOTICE).
 Copyright © 2026 HaiND, Posts and Telecommunications Institute of Technology (PTIT).
